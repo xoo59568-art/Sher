@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeuroBot — WhatsApp Linker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #080b10;
+    --surface:  #0f1318;
+    --border:   #1e2530;
+    --accent:   #00e5a0;
+    --accent2:  #00aaff;
+    --danger:   #ff4466;
+    --text:     #e8edf5;
+    --muted:    #5a6475;
+    --card:     #111620;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* ── noise overlay ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 0; opacity: .4;
+  }
+
+  /* ── grid bg ── */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none; z-index: 0; opacity: .4;
+  }
+
+  .glow {
+    position: fixed;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none; z-index: 0;
+    opacity: .12;
+  }
+  .glow-1 { background: var(--accent);  top: -200px; left: -100px; }
+  .glow-2 { background: var(--accent2); bottom: -200px; right: -100px; }
+
+  /* ── layout ── */
+  .wrapper {
+    position: relative; z-index: 1;
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 40px 20px;
+  }
+
+  /* ── header ── */
+  .header {
+    text-align: center; margin-bottom: 48px;
+    animation: fadeUp .6s ease both;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(0,229,160,.08);
+    border: 1px solid rgba(0,229,160,.2);
+    color: var(--accent);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    padding: 6px 16px; border-radius: 100px;
+    margin-bottom: 20px;
+  }
+  .badge .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 2s infinite;
+  }
+  h1 {
+    font-size: clamp(36px, 6vw, 64px);
+    font-weight: 800; letter-spacing: -2px;
+    line-height: 1.05;
+    background: linear-gradient(135deg, #fff 30%, var(--accent) 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+  }
+  .subtitle {
+    color: var(--muted); font-size: 15px; font-weight: 400;
+    letter-spacing: .3px;
+  }
+
+  /* ── steps indicator ── */
+  .steps {
+    display: flex; align-items: center; gap: 0;
+    margin-bottom: 36px;
+    animation: fadeUp .6s .1s ease both;
+  }
+  .step {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 600; letter-spacing: .5px;
+    text-transform: uppercase; color: var(--muted);
+    transition: color .3s;
+  }
+  .step.active { color: var(--accent); }
+  .step.done   { color: var(--accent2); }
+  .step-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 1.5px solid currentColor;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-family: 'DM Mono', monospace;
+    flex-shrink: 0; transition: all .3s;
+  }
+  .step.active .step-num {
+    background: var(--accent); color: #000; border-color: var(--accent);
+  }
+  .step.done .step-num {
+    background: var(--accent2); color: #000; border-color: var(--accent2);
+  }
+  .step-line {
+    width: 32px; height: 1.5px;
+    background: var(--border); margin: 0 4px; flex-shrink: 0;
+    transition: background .3s;
+  }
+  .step-line.done { background: var(--accent2); }
+
+  /* ── card ── */
+  .card {
+    width: 100%; max-width: 480px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    animation: fadeUp .6s .2s ease both;
+    box-shadow: 0 32px 64px rgba(0,0,0,.4);
+  }
+  .card-inner { padding: 36px; }
+
+  /* ── screens ── */
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* ── upload area ── */
+  .upload-area {
+    border: 2px dashed var(--border);
+    border-radius: 14px;
+    padding: 40px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .25s;
+    position: relative; overflow: hidden;
+    margin-bottom: 24px;
+  }
+  .upload-area:hover, .upload-area.drag {
+    border-color: var(--accent);
+    background: rgba(0,229,160,.04);
+  }
+  .upload-area input {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%;
+  }
+  .upload-icon {
+    width: 52px; height: 52px; border-radius: 14px;
+    background: rgba(0,229,160,.1);
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 16px;
+    font-size: 24px;
+  }
+  .upload-area h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+  .upload-area p  { font-size: 12px; color: var(--muted); }
+
+  .preview-wrap {
+    display: none; position: relative;
+    border-radius: 14px; overflow: hidden;
+    margin-bottom: 24px; aspect-ratio: 1;
+    max-width: 200px; margin-left: auto; margin-right: auto;
+  }
+  .preview-wrap img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .preview-change {
+    position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,.7); border: 1px solid rgba(255,255,255,.15);
+    color: #fff; font-size: 11px; font-weight: 600; letter-spacing: .5px;
+    padding: 5px 14px; border-radius: 100px; cursor: pointer; white-space: nowrap;
+    font-family: 'Syne', sans-serif;
+    transition: background .2s;
+  }
+  .preview-change:hover { background: rgba(0,0,0,.9); }
+
+  /* ── input ── */
+  .field { margin-bottom: 20px; }
+  .field label {
+    display: block; font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px;
+  }
+  .phone-wrap {
+    display: flex; align-items: center;
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+    transition: border-color .25s;
+  }
+  .phone-wrap:focus-within { border-color: var(--accent); }
+  .phone-prefix {
+    padding: 14px 14px 14px 16px;
+    font-family: 'DM Mono', monospace; font-size: 14px;
+    color: var(--muted); border-right: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .phone-wrap input {
+    flex: 1; background: transparent; border: none; outline: none;
+    padding: 14px 16px;
+    color: var(--text); font-family: 'DM Mono', monospace; font-size: 15px;
+  }
+  .phone-wrap input::placeholder { color: var(--muted); }
+
+  /* ── btn ── */
+  .btn {
+    width: 100%; padding: 15px;
+    border-radius: 10px; border: none; cursor: pointer;
+    font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+    letter-spacing: .5px; transition: all .2s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-primary {
+    background: var(--accent); color: #000;
+  }
+  .btn-primary:hover:not(:disabled) { background: #00ffb3; transform: translateY(-1px); }
+  .btn-primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .btn-ghost {
+    background: transparent; color: var(--muted);
+    border: 1.5px solid var(--border); margin-top: 10px;
+  }
+  .btn-ghost:hover { border-color: var(--muted); color: var(--text); }
+  .btn-danger {
+    background: transparent; color: var(--danger);
+    border: 1.5px solid rgba(255,68,102,.2); margin-top: 10px;
+  }
+  .btn-danger:hover { background: rgba(255,68,102,.08); }
+
+  /* ── pair code screen ── */
+  .code-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 2px;
+    text-transform: uppercase; color: var(--muted);
+    text-align: center; margin-bottom: 16px;
+  }
+  .code-box {
+    display: flex; gap: 8px; justify-content: center;
+    margin-bottom: 28px; flex-wrap: wrap;
+  }
+  .code-chunk {
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-family: 'DM Mono', monospace;
+    font-size: 22px; font-weight: 500;
+    letter-spacing: 3px;
+    color: var(--accent);
+    min-width: 80px; text-align: center;
+    animation: popIn .4s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  .code-chunk:nth-child(2) { animation-delay: .08s; }
+  .code-chunk:nth-child(3) { animation-delay: .16s; }
+
+  .copy-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: rgba(0,229,160,.08); border: 1px solid rgba(0,229,160,.2);
+    color: var(--accent); border-radius: 8px; padding: 10px 20px;
+    font-family: 'DM Mono', monospace; font-size: 13px;
+    cursor: pointer; transition: all .2s; margin: 0 auto 24px;
+    font-weight: 500;
+  }
+  .copy-btn:hover { background: rgba(0,229,160,.14); }
+  .copy-btn.copied { color: var(--accent2); border-color: rgba(0,170,255,.3); background: rgba(0,170,255,.08); }
+
+  .instructions {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 20px;
+  }
+  .instructions h4 {
+    font-size: 12px; font-weight: 700; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 12px;
+  }
+  .instructions ol {
+    padding-left: 16px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .instructions li { font-size: 13px; color: var(--text); line-height: 1.5; }
+  .instructions li span { color: var(--accent2); font-weight: 700; }
+
+  /* ── status screen ── */
+  .status-icon {
+    width: 80px; height: 80px; border-radius: 50%;
+    margin: 0 auto 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 36px;
+  }
+  .status-icon.spinning {
+    background: rgba(0,229,160,.08);
+    border: 2px solid rgba(0,229,160,.2);
+    animation: spin-border 2s linear infinite;
+  }
+  .status-icon.success {
+    background: rgba(0,229,160,.12);
+    border: 2px solid var(--accent);
+  }
+  .status-icon.error {
+    background: rgba(255,68,102,.1);
+    border: 2px solid var(--danger);
+  }
+  .status-title {
+    font-size: 20px; font-weight: 800; text-align: center; margin-bottom: 8px;
+  }
+  .status-sub {
+    font-size: 13px; color: var(--muted); text-align: center;
+    line-height: 1.6; margin-bottom: 24px;
+  }
+
+  /* timeline */
+  .timeline { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+  .tl-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface); transition: all .3s;
+  }
+  .tl-item.active { border-color: rgba(0,229,160,.3); background: rgba(0,229,160,.04); }
+  .tl-item.done   { border-color: rgba(0,170,255,.2); background: rgba(0,170,255,.04); }
+  .tl-item.error  { border-color: rgba(255,68,102,.2); background: rgba(255,68,102,.04); }
+  .tl-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    background: var(--border); transition: all .3s;
+  }
+  .tl-item.active .tl-dot { background: var(--accent); animation: pulse 1.5s infinite; }
+  .tl-item.done   .tl-dot { background: var(--accent2); }
+  .tl-item.error  .tl-dot { background: var(--danger); }
+  .tl-text { font-size: 13px; font-weight: 600; flex: 1; }
+  .tl-sub  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .tl-badge {
+    font-family: 'DM Mono', monospace; font-size: 10px;
+    padding: 3px 8px; border-radius: 100px;
+    background: rgba(0,229,160,.1); color: var(--accent);
+  }
+  .tl-item.done .tl-badge { background: rgba(0,170,255,.1); color: var(--accent2); }
+
+  /* expire bar */
+  .expire-wrap { margin-bottom: 20px; }
+  .expire-label {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: var(--muted); margin-bottom: 6px;
+  }
+  .expire-bar {
+    height: 3px; background: var(--border); border-radius: 100px; overflow: hidden;
+  }
+  .expire-fill {
+    height: 100%; background: var(--accent); border-radius: 100px;
+    transition: width 1s linear, background .3s;
+  }
+
+  /* ── toast ── */
+  .toast {
+    position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--card); border: 1px solid var(--border);
+    color: var(--text); padding: 12px 24px; border-radius: 100px;
+    font-size: 13px; font-weight: 600;
+    box-shadow: 0 16px 48px rgba(0,0,0,.4);
+    transition: transform .3s cubic-bezier(.34,1.56,.64,1);
+    z-index: 999; white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* ── animations ── */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(.8); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50%       { opacity: .5; transform: scale(1.3); }
+  }
+  @keyframes spin-border {
+    from { box-shadow: 0 0 0 2px rgba(0,229,160,.1), 0 0 0 4px rgba(0,229,160,.05); transform: rotate(0deg); }
+    to   { box-shadow: 0 0 0 2px rgba(0,229,160,.3), 0 0 0 4px rgba(0,229,160,.1); transform: rotate(360deg); }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid rgba(0,0,0,.2);
+    border-top-color: #000;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+</style>
+</head>
+<body>
+
+<div class="glow glow-1"></div>
+<div class="glow glow-2"></div>
+
+<div class="wrapper">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="badge"><span class="dot"></span> WhatsApp Pairing Tool</div>
+    <h1>NeuroBot</h1>
+    <p class="subtitle">Photo upload karo, number do — hum baaki sab kar denge</p>
+  </div>
+
+  <!-- Steps -->
+  <div class="steps" id="stepsBar">
+    <div class="step active" id="s1"><div class="step-num">1</div> Upload</div>
+    <div class="step-line" id="l1"></div>
+    <div class="step" id="s2"><div class="step-num">2</div> Pair</div>
+    <div class="step-line" id="l2"></div>
+    <div class="step" id="s3"><div class="step-num">3</div> Done</div>
+  </div>
+
+  <!-- Card -->
+  <div class="card">
+    <div class="card-inner">
+
+      <!-- SCREEN 1: Upload + Number -->
+      <div class="screen active" id="screen1">
+        <div class="upload-area" id="uploadArea">
+          <input type="file" id="fileInput" accept="image/*">
+          <div class="upload-icon">📸</div>
+          <h3>Photo Drop Karo ya Click Karo</h3>
+          <p>JPG, PNG — WA profile picture banega</p>
+        </div>
+        <div class="preview-wrap" id="previewWrap">
+          <img id="previewImg" src="" alt="preview">
+          <button class="preview-change" onclick="changePhoto()">✏️ Change</button>
+        </div>
+
+        <div class="field">
+          <label>WhatsApp Number</label>
+          <div class="phone-wrap">
+            <span class="phone-prefix">+</span>
+            <input type="tel" id="phoneInput" placeholder="917XXXXXXXXX" maxlength="15" inputmode="numeric">
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="startBtn" onclick="startPair()" disabled>
+          Start Pairing →
+        </button>
+      </div>
+
+      <!-- SCREEN 2: Pair Code -->
+      <div class="screen" id="screen2">
+        <p class="code-label">Your Pair Code</p>
+        <div class="code-box" id="codeBox"></div>
+
+        <button class="copy-btn" id="copyBtn" onclick="copyCode()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy Code
+        </button>
+
+        <div class="expire-wrap">
+          <div class="expire-label">
+            <span>Code expires in</span>
+            <span id="expireText">60s</span>
+          </div>
+          <div class="expire-bar"><div class="expire-fill" id="expireFill"></div></div>
+        </div>
+
+        <div class="instructions">
+          <h4>WhatsApp me karo</h4>
+          <ol>
+            <li><span>1.</span> Settings → Linked Devices kholao</li>
+            <li><span>2.</span> "Link a Device" tap karo</li>
+            <li><span>3.</span> "Link with phone number instead" chuno</li>
+            <li><span>4.</span> Upar wala code enter karo</li>
+          </ol>
+        </div>
+
+        <button class="btn btn-ghost" onclick="cancelPair()">✕ Cancel</button>
+      </div>
+
+      <!-- SCREEN 3: Status / Done -->
+      <div class="screen" id="screen3">
+        <div class="status-icon spinning" id="statusIcon">⏳</div>
+        <div class="status-title" id="statusTitle">Connecting...</div>
+        <div class="status-sub" id="statusSub">WhatsApp device link ho raha hai, wait karo</div>
+
+        <div class="timeline" id="timeline">
+          <div class="tl-item" id="tl1">
+            <div class="tl-dot"></div>
+            <div><div class="tl-text">Device Linked</div><div class="tl-sub">Pair code accept hua</div></div>
+            <div class="tl-badge">Pending</div>
+          </div>
+          <div class="tl-item" id="tl2">
+            <div class="tl-dot"></div>
+            <div><div class="tl-text">DP Change</div><div class="tl-sub">Profile picture set ho rahi hai</div></div>
+            <div class="tl-badge">Pending</div>
+          </div>
+          <div class="tl-item" id="tl3">
+            <div class="tl-dot"></div>
+            <div><div class="tl-text">Cleanup</div><div class="tl-sub">Logout + session delete</div></div>
+            <div class="tl-badge">Pending</div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary" id="newBtn" onclick="resetAll()" style="display:none">
+          ↩ Naya Pair Karo
+        </button>
+        <button class="btn btn-danger" id="cancelBtn3" onclick="cancelPair()">✕ Cancel</button>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── state ──────────────────────────────────────────────────
+let imageBase64  = null;
+let currentPhone = null;
+let pollTimer    = null;
+let expireTimer  = null;
+let fullCode     = "";
+
+// ── helpers ───────────────────────────────────────────────
+const $  = id => document.getElementById(id);
+const go = id => {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  $(id).classList.add('active');
+};
+
+function toast(msg, ms = 2500) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), ms);
+}
+
+function setStep(n) {
+  for (let i = 1; i <= 3; i++) {
+    const s = $('s' + i);
+    s.className = 'step' + (i < n ? ' done' : i === n ? ' active' : '');
+    if (i < 3) {
+      $('l' + i).className = 'step-line' + (i < n ? ' done' : '');
+    }
+  }
+}
+
+// ── screen 1: upload + number ──────────────────────────────
+const uploadArea = $('uploadArea');
+const fileInput  = $('fileInput');
+
+uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag'); });
+uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag'));
+uploadArea.addEventListener('drop', e => {
+  e.preventDefault(); uploadArea.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+function handleFile(file) {
+  if (!file.type.startsWith('image/')) return toast('⚠️ Sirf image files allowed hain');
+  const reader = new FileReader();
+  reader.onload = e => {
+    imageBase64 = e.target.result;
+    $('previewImg').src = imageBase64;
+    $('previewWrap').style.display = 'block';
+    uploadArea.style.display = 'none';
+    checkReady();
+  };
+  reader.readAsDataURL(file);
+}
+
+function changePhoto() {
+  imageBase64 = null;
+  $('previewWrap').style.display = 'none';
+  uploadArea.style.display = 'block';
+  fileInput.value = '';
+  checkReady();
+}
+
+$('phoneInput').addEventListener('input', checkReady);
+
+function checkReady() {
+  const phone = $('phoneInput').value.replace(/\D/g, '');
+  $('startBtn').disabled = !(imageBase64 && phone.length >= 7 && phone.length <= 15);
+}
+
+// ── start pairing ──────────────────────────────────────────
+async function startPair() {
+  const phone = $('phoneInput').value.replace(/\D/g, '');
+  if (!imageBase64 || phone.length < 7) return;
+
+  currentPhone = phone;
+  $('startBtn').disabled = true;
+  $('startBtn').innerHTML = '<div class="spinner"></div> Connecting...';
+
+  try {
+    const res  = await fetch('/api/pair', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, imageBase64 }),
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      toast('❌ ' + (data.error || 'Error'), 4000);
+      $('startBtn').disabled = false;
+      $('startBtn').innerHTML = 'Start Pairing →';
+      return;
+    }
+
+    showPairCode(data.pair_code);
+
+  } catch (e) {
+    toast('❌ Network error: ' + e.message, 4000);
+    $('startBtn').disabled = false;
+    $('startBtn').innerHTML = 'Start Pairing →';
+  }
+}
+
+// ── show pair code ─────────────────────────────────────────
+function showPairCode(code) {
+  fullCode = code;
+  setStep(2);
+  go('screen2');
+
+  // Split by - and show chunks
+  const codeBox = $('codeBox');
+  codeBox.innerHTML = '';
+  code.split('-').forEach((chunk, i) => {
+    const div = document.createElement('div');
+    div.className = 'code-chunk';
+    div.style.animationDelay = (i * 0.08) + 's';
+    div.textContent = chunk;
+    codeBox.appendChild(div);
+  });
+
+  // Expire countdown (60s)
+  let secs = 60;
+  $('expireFill').style.width = '100%';
+  $('expireFill').style.background = 'var(--accent)';
+  $('expireText').textContent = secs + 's';
+
+  clearInterval(expireTimer);
+  expireTimer = setInterval(() => {
+    secs--;
+    $('expireText').textContent = secs + 's';
+    $('expireFill').style.width = (secs / 60 * 100) + '%';
+    if (secs <= 20) $('expireFill').style.background = 'var(--danger)';
+    if (secs <= 0) {
+      clearInterval(expireTimer);
+      $('expireText').textContent = 'Expired';
+    }
+  }, 1000);
+
+  // Start polling status
+  startPolling();
+}
+
+// ── copy code ──────────────────────────────────────────────
+function copyCode() {
+  navigator.clipboard.writeText(fullCode.replace(/-/g, '')).then(() => {
+    const btn = $('copyBtn');
+    btn.classList.add('copied');
+    btn.innerHTML = '✓ Copied!';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Code';
+    }, 2000);
+  });
+}
+
+// ── polling ────────────────────────────────────────────────
+function startPolling() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(pollStatus, 2000);
+}
+
+let lastStatus = '';
+async function pollStatus() {
+  if (!currentPhone) return;
+  try {
+    const res  = await fetch('/api/status/' + currentPhone);
+    const data = await res.json();
+    handleStatus(data);
+  } catch (_) {}
+}
+
+function handleStatus(data) {
+  const { status } = data;
+  if (status === lastStatus) return;
+  lastStatus = status;
+
+  if (status === 'connected') {
+    clearInterval(expireTimer);
+    showStatusScreen();
+    setTimeline('tl1', 'done');
+    setTimeline('tl2', 'active');
+    $('statusTitle').textContent = 'Connected!';
+    $('statusSub').textContent   = 'DP set ho rahi hai...';
+    $('statusIcon').className    = 'status-icon spinning';
+    $('statusIcon').textContent  = '🖼️';
+  }
+
+  if (status === 'setting_dp') {
+    setTimeline('tl1', 'done');
+    setTimeline('tl2', 'active');
+  }
+
+  if (status === 'done') {
+    clearInterval(pollTimer);
+    setTimeline('tl1', 'done');
+    setTimeline('tl2', 'done');
+    setTimeline('tl3', 'done');
+    $('statusIcon').className    = 'status-icon success';
+    $('statusIcon').textContent  = '✅';
+    $('statusTitle').textContent = 'Sab Ho Gaya!';
+    $('statusSub').textContent   = 'DP change hua, device logout hua, session clean hua.';
+    $('newBtn').style.display    = 'flex';
+    $('cancelBtn3').style.display = 'none';
+    setStep(3);
+  }
+
+  if (status === 'error' || status === 'cancelled') {
+    clearInterval(pollTimer);
+    $('statusIcon').className    = 'status-icon error';
+    $('statusIcon').textContent  = '❌';
+    $('statusTitle').textContent = status === 'cancelled' ? 'Cancelled' : 'Error';
+    $('statusSub').textContent   = data.error || 'Kuch gadbad ho gayi';
+    $('newBtn').style.display    = 'flex';
+    $('cancelBtn3').style.display = 'none';
+  }
+}
+
+function showStatusScreen() {
+  setStep(2);
+  go('screen3');
+  clearInterval(expireTimer);
+}
+
+function setTimeline(id, state) {
+  const el    = $(id);
+  const badge = el.querySelector('.tl-badge');
+  el.className = 'tl-item ' + state;
+  badge.textContent = state === 'done' ? '✓ Done' : state === 'active' ? 'Running' : state === 'error' ? 'Failed' : 'Pending';
+}
+
+// ── cancel ─────────────────────────────────────────────────
+async function cancelPair() {
+  clearInterval(pollTimer);
+  clearInterval(expireTimer);
+  if (currentPhone) {
+    try {
+      await fetch('/api/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: currentPhone }),
+      });
+    } catch (_) {}
+  }
+  resetAll();
+}
+
+function resetAll() {
+  clearInterval(pollTimer);
+  clearInterval(expireTimer);
+  currentPhone = null; imageBase64 = null; fullCode = ''; lastStatus = '';
+  $('fileInput').value = '';
+  $('phoneInput').value = '';
+  $('previewWrap').style.display = 'none';
+  uploadArea.style.display = 'block';
+  $('startBtn').disabled = true;
+  $('startBtn').innerHTML = 'Start Pairing →';
+  $('newBtn').style.display = 'none';
+  $('cancelBtn3').style.display = 'flex';
+  ['tl1','tl2','tl3'].forEach(id => setTimeline(id, ''));
+  setStep(1);
+  go('screen1');
+}
+</script>
+</body>
+</html>
